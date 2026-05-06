@@ -14,17 +14,15 @@ export class RmqPublisherService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit() {
-    const url = this.configService.get<string>('RABBITMQ_URL');
+    const url = this.configService.getOrThrow<string>('RABBITMQ_URL');
+    const queue = this.configService.getOrThrow<string>('RABBITMQ_QUEUE_MESSAGES');
 
     this.connection = amqp.connect([url]);
 
     this.channelWrapper = this.connection.createChannel({
       json: true,
       setup: (channel: ConfirmChannel) => {
-        return channel.assertQueue(
-          this.configService.get<string>('RABBITMQ_QUEUE_MESSAGES'),
-          { durable: true },
-        );
+        return channel.assertQueue(queue, { durable: true });
       },
     });
 
