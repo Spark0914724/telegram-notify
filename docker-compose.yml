@@ -1,0 +1,54 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"     # AMQP protocol
+      - "15672:15672"   # Management UI → http://localhost:15672
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  producer:
+    build:
+      context: .
+      dockerfile: apps/producer/Dockerfile
+    container_name: producer
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  consumer:
+    build:
+      context: .
+      dockerfile: apps/consumer/Dockerfile
+    container_name: consumer
+    env_file:
+      - ../.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  telegram-notifier:
+    build:
+      context: .
+      dockerfile: apps/telegram-notifier/Dockerfile
+    container_name: telegram-notifier
+    env_file:
+      - ../.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
