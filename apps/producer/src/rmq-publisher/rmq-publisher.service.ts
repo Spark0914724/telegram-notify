@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqp-connection-manager';
 import { ChannelWrapper } from 'amqp-connection-manager';
 import { ConfirmChannel } from 'amqplib';
-import { MessageDto } from '@app/shared';
+import { MessageDto, withRetry } from '@app/shared';
 
 @Injectable()
 export class RmqPublisherService implements OnModuleInit, OnModuleDestroy {
@@ -50,23 +50,10 @@ export class RmqPublisherService implements OnModuleInit, OnModuleDestroy {
     data: MessageDto,
     retries = 3,
   ): Promise<void> {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        await this.publish(queue, data);
-        return;
-      } catch (error) {
-        this.logger.warn(
-          `Publish attempt ${attempt}/${retries} failed for [${data.messageId}]: ${error.message}`,
-        );
-        if (attempt === retries) {
-          this.logger.error(
-            `All ${retries} publish attempts failed for [${data.messageId}]`,
-          );
-          throw error;
-        }
-        // exponential backoff: 1s, 2s, 3s
-        await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
-      }
-    }
+    await withRetry(
+      () => this.publish(queue, data),
+      { retries, delay: 1000, label: `publish:${data.messageId}` },
+      this.logger,
+    );
   }
 }
