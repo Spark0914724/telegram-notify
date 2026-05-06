@@ -1,98 +1,215 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# NestJS Microservices — RabbitMQ + Telegram
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A microservice architecture built with NestJS, RabbitMQ, and Telegram Bot API.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Architecture
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Client                               │
+│                  POST /messages/send                        │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────┐
+│           Producer (HTTP :3000)         │
+│  - Accepts HTTP requests                │
+│  - Generates UUID messageId             │
+│  - Publishes to messages_queue          │
+│  - Swagger UI at /api                   │
+└─────────────────────┬───────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────┐
+│              RabbitMQ :5672             │
+│  - messages_queue                       │
+│  - notifications_queue                  │
+│  - messages_dlx (dead letter exchange)  │
+│  - Management UI at :15672              │
+└──────────┬──────────────────────────────┘
+           │                    │
+           ▼                    ▼
+┌──────────────────┐  ┌─────────────────────────┐
+│    Consumer      │  │   Telegram Notifier      │
+│                  │  │                          │
+│ - Receives from  │  │ - Receives from          │
+│   messages_queue │  │   notifications_queue    │
+│ - Idempotency    │  │ - Sends Telegram message │
+│   check (Set)    │  │   via Bot API            │
+│ - Forwards to    │  │ - ack / nack to DLQ      │
+│   notifications  │  └─────────────────────────┘
+│   _queue         │
+└──────────────────┘
 ```
 
-## Compile and run the project
+## Project Structure
 
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+```
+nestjs-microservices/
+├── apps/
+│   ├── producer/               # HTTP service — POST /messages/send
+│   ├── consumer/               # RabbitMQ consumer — messages_queue
+│   └── telegram-notifier/      # RabbitMQ consumer — notifications_queue
+├── libs/
+│   └── shared/                 # Shared DTOs, constants, RmqPublisherService
+├── docker-compose.yml
+├── .env.example
+└── README.md
 ```
 
-## Run tests
+## Prerequisites
+
+- [Docker](https://www.docker.com/) and Docker Compose
+- [Node.js 20+](https://nodejs.org/) (for local development)
+- A Telegram Bot token — create one via [@BotFather](https://t.me/BotFather)
+- Your Telegram Chat ID — get it via [@userinfobot](https://t.me/userinfobot)
+
+## Getting Started
+
+### 1. Clone the repository
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+git clone <your-repo-url>
+cd nestjs-microservices
 ```
 
-## Deployment
+### 2. Configure environment variables
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Copy the example file and fill in your values:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+cp .env.example .env
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Edit `.env`:
 
-## Resources
+```env
+RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+RABBITMQ_QUEUE_MESSAGES=messages_queue
+RABBITMQ_QUEUE_NOTIFICATIONS=notifications_queue
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_CHAT_ID=your_chat_id_here
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+### 3. Run with Docker
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```bash
+docker-compose up --build
+```
 
-## Support
+To run in the background:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```bash
+docker-compose up --build -d
+```
 
-## Stay in touch
+To stop:
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```bash
+docker-compose down
+```
 
-## License
+## Services
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+| Service | URL | Description |
+|---|---|---|
+| Producer API | http://localhost:3000 | HTTP endpoint to send messages |
+| Swagger UI | http://localhost:3000/api | Interactive API documentation |
+| RabbitMQ Management | http://localhost:15672 | Monitor queues (guest / guest) |
+
+## API Reference
+
+### POST /messages/send
+
+Publishes a message to the RabbitMQ queue.
+
+**Request body:**
+```json
+{
+  "eventType": "user.created",
+  "payload": {
+    "userId": "123",
+    "email": "user@example.com"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "messageId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+## Local Development (without Docker)
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Start RabbitMQ only via Docker
+
+```bash
+docker-compose up rabbitmq -d
+```
+
+### 3. Update `.env` for local connection
+
+```env
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+```
+
+### 4. Start each service in separate terminals
+
+```bash
+# Terminal 1
+npm run start:dev producer
+
+# Terminal 2
+npm run start:dev consumer
+
+# Terminal 3
+npm run start:dev telegram-notifier
+```
+
+## Running Tests
+
+### Unit tests
+
+```bash
+npm run test
+```
+
+### Unit tests with coverage
+
+```bash
+npm run test:cov
+```
+
+### e2e tests
+
+```bash
+npm run test:e2e
+```
+
+## Environment Variables
+
+| Variable | Description | Example |
+|---|---|---|
+| `RABBITMQ_URL` | RabbitMQ connection URL | `amqp://guest:guest@rabbitmq:5672` |
+| `RABBITMQ_QUEUE_MESSAGES` | Main messages queue name | `messages_queue` |
+| `RABBITMQ_QUEUE_NOTIFICATIONS` | Notifications queue name | `notifications_queue` |
+| `TELEGRAM_BOT_TOKEN` | Token from @BotFather | `123456:ABC-DEF...` |
+| `TELEGRAM_CHAT_ID` | Target chat or user ID | `123456789` |
+
+## Message Flow
+
+1. Client sends `POST /messages/send` to the Producer
+2. Producer generates a UUID, attaches timestamp, publishes to `messages_queue`
+3. Consumer receives the message, checks idempotency, processes it
+4. Consumer forwards the message to `notifications_queue`
+5. Telegram Notifier receives from `notifications_queue` and sends a Telegram message
+6. On any failure, messages are routed to the Dead Letter Queue (`messages_dlx`)
