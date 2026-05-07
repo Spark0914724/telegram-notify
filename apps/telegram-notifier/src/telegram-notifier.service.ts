@@ -9,50 +9,34 @@ export class TelegramNotifierService implements OnModuleInit {
   private bot: TelegramBot;
   private chatId: string;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly config: ConfigService) {}
 
   onModuleInit() {
-    const token = this.configService.getOrThrow<string>('TELEGRAM_BOT_TOKEN');
-    this.chatId = this.configService.getOrThrow<string>('TELEGRAM_CHAT_ID');
+    const token = this.config.getOrThrow<string>('TELEGRAM_BOT_TOKEN');
+    this.chatId = this.config.getOrThrow<string>('TELEGRAM_CHAT_ID');
 
-    const proxyUrl = this.configService.get<string>('TELEGRAM_PROXY_URL');
-
-    const options: TelegramBot.ConstructorOptions = {};
-
-    if (proxyUrl) {
-      options.request = {
-        url: '',
-        proxy: proxyUrl,
-      } as any;
-      this.logger.log(`Telegram bot using proxy: ${proxyUrl}`);
-    }
+    const proxy = this.config.get<string>('TELEGRAM_PROXY_URL');
+    const options: TelegramBot.ConstructorOptions = proxy
+      ? { request: { url: '', proxy } as any }
+      : {};
 
     this.bot = new TelegramBot(token, options);
-    this.logger.log('Telegram bot initialized');
+    this.logger.log('telegram bot ready');
   }
 
   async sendNotification(data: MessageDto): Promise<void> {
-    const text = this.formatMessage(data);
-
-    try {
-      await this.bot.sendMessage(this.chatId, text, { parse_mode: 'HTML' });
-      this.logger.log(`Telegram notification sent [${data.messageId}]`);
-    } catch (error) {
-      this.logger.error(
-        `Failed to send Telegram notification [${data.messageId}]: ${error.message}`,
-        error.stack,
-      );
-      throw error;
-    }
+    await this.bot.sendMessage(this.chatId, this.format(data), {
+      parse_mode: 'HTML',
+    });
+    this.logger.log(`sent [${data.messageId}]`);
   }
 
-  private formatMessage(data: MessageDto): string {
+  private format(data: MessageDto): string {
     return (
-      `📨 <b>New Event</b>\n` +
-      `🔖 <b>Type:</b> ${data.eventType}\n` +
-      `🆔 <b>ID:</b> <code>${data.messageId}</code>\n` +
-      `🕐 <b>Time:</b> ${data.timestamp}\n\n` +
-      `📦 <b>Payload:</b>\n<pre>${JSON.stringify(data.payload, null, 2)}</pre>`
+      `📨 <b>${data.eventType}</b>\n` +
+      `<code>${data.messageId}</code>\n` +
+      `${data.timestamp}\n\n` +
+      `<pre>${JSON.stringify(data.payload, null, 2)}</pre>`
     );
   }
 }

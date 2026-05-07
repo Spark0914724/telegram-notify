@@ -1,16 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class IdempotencyService {
-  private readonly logger = new Logger(IdempotencyService.name);
-  private readonly processed = new Set<string>();
+  private readonly seen = new Set<string>();
 
-  isProcessed(messageId: string): boolean {
-    return this.processed.has(messageId);
+  isProcessed(id: string): boolean {
+    return this.seen.has(id);
   }
 
-  markProcessed(messageId: string): void {
-    this.processed.add(messageId);
-    this.logger.debug(`Marked as processed: ${messageId}`);
+  markProcessed(id: string): void {
+    this.seen.add(id);
   }
 }

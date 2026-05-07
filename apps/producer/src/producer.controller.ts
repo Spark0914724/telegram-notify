@@ -5,7 +5,7 @@ import { CreateMessageDto } from './dto/create-message.dto';
 
 @Controller('messages')
 export class ProducerController {
-  constructor(private readonly rmqPublisherService: RmqPublisherService) {}
+  constructor(private readonly publisher: RmqPublisherService) {}
 
   @Post('send')
   async send(@Body() body: CreateMessageDto) {
@@ -15,7 +15,8 @@ export class ProducerController {
       payload: body.payload,
       timestamp: new Date().toISOString(),
     };
-    await this.rmqPublisherService.publishWithRetry(QUEUES.MESSAGES, msg);
+
+    await this.publisher.publishWithRetry(QUEUES.MESSAGES, msg);
     return { success: true, messageId: msg.messageId };
   }
 }

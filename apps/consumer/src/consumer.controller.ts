@@ -1,8 +1,8 @@
 import { Controller, Logger } from '@nestjs/common';
 import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
+import { MessageDto, QUEUES } from '@app/shared';
 import { ConsumerService } from './consumer.service';
 import { IdempotencyService } from './idempotency/idempotency.service';
-import { MessageDto, QUEUES } from '@app/shared';
 
 @Controller()
 export class ConsumerController {
@@ -10,35 +10,27 @@ export class ConsumerController {
 
   constructor(
     private readonly consumerService: ConsumerService,
-    private readonly idempotencyService: IdempotencyService,
+    private readonly idempotency: IdempotencyService,
   ) {}
 
   @MessagePattern(QUEUES.MESSAGES)
-  async handleMessage(
-    @Payload() data: MessageDto,
-    @Ctx() context: RmqContext,
-  ): Promise<void> {
-    const channel = context.getChannelRef();
-    const originalMsg = context.getMessage();
+  async handleMessage(@Payload() data: MessageDto, @Ctx() ctx: RmqContext) {
+    const channel = ctx.getChannelRef();
+    const msg = ctx.getMessage();
 
-    // Skip duplicate messages
-    if (this.idempotencyService.isProcessed(data.messageId)) {
-      this.logger.warn(`Duplicate message skipped [${data.messageId}]`);
-      channel.ack(originalMsg);
+    if (this.idempotency.isProcessed(data.messageId)) {
+      this.logger.warn(`duplicate skipped [${data.messageId}]`);
+      channel.ack(msg);
       return;
     }
 
     try {
       await this.consumerService.processMessage(data);
-      this.idempotencyService.markProcessed(data.messageId);
-      channel.ack(originalMsg);
-    } catch (error) {
-      this.logger.error(
-        `Failed to process [${data.messageId}]: ${error.message}`,
-        error.stack,
-      );
-      // nack without requeue → routes to Dead Letter Queue
-      channel.nack(originalMsg, false, false);
+      this.idempotency.markProcessed(data.messageId);
+      channel.ack(msg);
+    } catch (err) {
+      this.logger.error(`failed [${data.messageId}]: ${err.message}`);
+      channel.nack(msg, false, false);
     }
   }
 }

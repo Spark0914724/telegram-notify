@@ -1,34 +1,25 @@
 import { Controller, Logger } from '@nestjs/common';
 import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
-import { TelegramNotifierService } from './telegram-notifier.service';
 import { MessageDto, QUEUES } from '@app/shared';
+import { TelegramNotifierService } from './telegram-notifier.service';
 
 @Controller()
 export class TelegramNotifierController {
   private readonly logger = new Logger(TelegramNotifierController.name);
 
-  constructor(
-    private readonly telegramNotifierService: TelegramNotifierService,
-  ) {}
+  constructor(private readonly telegram: TelegramNotifierService) {}
 
   @MessagePattern(QUEUES.NOTIFICATIONS)
-  async handleNotification(
-    @Payload() data: MessageDto,
-    @Ctx() context: RmqContext,
-  ): Promise<void> {
-    const channel = context.getChannelRef();
-    const originalMsg = context.getMessage();
+  async handleNotification(@Payload() data: MessageDto, @Ctx() ctx: RmqContext) {
+    const channel = ctx.getChannelRef();
+    const msg = ctx.getMessage();
 
     try {
-      await this.telegramNotifierService.sendNotification(data);
-      channel.ack(originalMsg);
-    } catch (error) {
-      this.logger.error(
-        `Notification failed [${data.messageId}]: ${error.message}`,
-        error.stack,
-      );
-      // nack without requeue → goes to DLQ
-      channel.nack(originalMsg, false, false);
+      await this.telegram.sendNotification(data);
+      channel.ack(msg);
+    } catch (err) {
+      this.logger.error(`failed to notify [${data.messageId}]: ${err.message}`);
+      channel.nack(msg, false, false);
     }
   }
 }
