@@ -1,140 +1,99 @@
-# NestJS Microservices — RabbitMQ + Telegram
+# nestjs-microservices
 
-A microservice architecture built with NestJS, RabbitMQ, and Telegram Bot API.
+Microservice setup using NestJS, RabbitMQ and Telegram Bot API.
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Client                               │
-│                  POST /messages/send                        │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────┐
-│           Producer (HTTP :3000)         │
-│  - Accepts HTTP requests                │
-│  - Generates UUID messageId             │
-│  - Publishes to messages_queue          │
-│  - Swagger UI at /api                   │
-└─────────────────────┬───────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────┐
-│              RabbitMQ :5672             │
-│  - messages_queue                       │
-│  - notifications_queue                  │
-│  - messages_dlx (dead letter exchange)  │
-│  - Management UI at :15672              │
-└──────────┬──────────────────────────────┘
-           │                    │
-           ▼                    ▼
-┌──────────────────┐  ┌─────────────────────────┐
-│    Consumer      │  │   Telegram Notifier      │
-│                  │  │                          │
-│ - Receives from  │  │ - Receives from          │
-│   messages_queue │  │   notifications_queue    │
-│ - Idempotency    │  │ - Sends Telegram message │
-│   check (Set)    │  │   via Bot API            │
-│ - Forwards to    │  │ - ack / nack to DLQ      │
-│   notifications  │  └─────────────────────────┘
-│   _queue         │
-└──────────────────┘
-```
-
-## Project Structure
+## How it works
 
 ```
-nestjs-microservices/
-├── apps/
-│   ├── producer/               # HTTP service — POST /messages/send
-│   ├── consumer/               # RabbitMQ consumer — messages_queue
-│   └── telegram-notifier/      # RabbitMQ consumer — notifications_queue
-├── libs/
-│   └── shared/                 # Shared DTOs, constants, RmqPublisherService
-├── docker-compose.yml
-├── .env.example
-└── README.md
+POST /messages/send
+        │
+        ▼
+    Producer
+        │
+        ▼
+  messages_queue (RabbitMQ)
+        │
+        ▼
+    Consumer ──────────────► notifications_queue
+                                      │
+                                      ▼
+                              Telegram Notifier
+                                      │
+                                      ▼
+                               Telegram Bot
 ```
 
-## Prerequisites
+Failed messages on `messages_queue` go to `messages_dlx` (dead letter exchange).
 
-- [Docker](https://www.docker.com/) and Docker Compose
-- [Node.js 20+](https://nodejs.org/) (for local development)
-- A Telegram Bot token — create one via [@BotFather](https://t.me/BotFather)
-- Your Telegram Chat ID — get it via [@userinfobot](https://t.me/userinfobot)
+## Stack
 
-## Getting Started
+- NestJS 11
+- RabbitMQ (amqp-connection-manager)
+- Telegram Bot API (node-telegram-bot-api)
+- Docker / Docker Compose
 
-### 1. Clone the repository
+## Setup
+
+### 1. Clone
 
 ```bash
-git clone <your-repo-url>
+git clone <repo-url>
 cd nestjs-microservices
 ```
 
-### 2. Configure environment variables
-
-Copy the example file and fill in your values:
+### 2. Configure
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Fill in `.env`:
 
 ```env
 RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
 RABBITMQ_QUEUE_MESSAGES=messages_queue
 RABBITMQ_QUEUE_NOTIFICATIONS=notifications_queue
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-TELEGRAM_CHAT_ID=your_chat_id_here
+TELEGRAM_BOT_TOKEN=your_token
+TELEGRAM_CHAT_ID=your_chat_id
+
+# if Telegram is blocked in your region
+# TELEGRAM_PROXY_URL=http://user:pass@host:port
 ```
 
-### 3. Run with Docker
+To get your `TELEGRAM_BOT_TOKEN` — talk to [@BotFather](https://t.me/BotFather) on Telegram.
+
+To get your `TELEGRAM_CHAT_ID` — send any message to your bot, then open:
+```
+https://api.telegram.org/bot<TOKEN>/getUpdates
+```
+Look for `chat.id` in the response.
+
+### 3. Run
 
 ```bash
 docker-compose up --build
 ```
 
-To run in the background:
-
-```bash
-docker-compose up --build -d
-```
-
-To stop:
-
-```bash
-docker-compose down
-```
-
 ## Services
 
-| Service | URL | Description |
-|---|---|---|
-| Producer API | http://localhost:3000 | HTTP endpoint to send messages |
-| Swagger UI | http://localhost:3000/api | Interactive API documentation |
-| RabbitMQ Management | http://localhost:15672 | Monitor queues (guest / guest) |
+| Service | URL |
+|---|---|
+| Producer API | http://localhost:3000 |
+| RabbitMQ UI | http://localhost:15672 (guest/guest) |
 
-## API Reference
+## API
 
 ### POST /messages/send
 
-Publishes a message to the RabbitMQ queue.
-
-**Request body:**
 ```json
 {
   "eventType": "user.created",
-  "payload": {
-    "userId": "123",
-    "email": "user@example.com"
-  }
+  "payload": { "userId": "123" }
 }
 ```
 
-**Response:**
+Response:
+
 ```json
 {
   "success": true,
@@ -142,74 +101,32 @@ Publishes a message to the RabbitMQ queue.
 }
 ```
 
-## Local Development (without Docker)
+## Local dev (without Docker)
 
-### 1. Install dependencies
-
-```bash
-npm install
-```
-
-### 2. Start RabbitMQ only via Docker
+Start RabbitMQ:
 
 ```bash
 docker-compose up rabbitmq -d
 ```
 
-### 3. Update `.env` for local connection
+Update `RABBITMQ_URL` in `.env` to use `localhost`:
 
 ```env
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
 ```
 
-### 4. Start each service in separate terminals
+Run each service:
 
 ```bash
-# Terminal 1
 npm run start:dev producer
-
-# Terminal 2
 npm run start:dev consumer
-
-# Terminal 3
 npm run start:dev telegram-notifier
 ```
 
-## Running Tests
-
-### Unit tests
+## Tests
 
 ```bash
-npm run test
+npm run test        # unit tests
+npm run test:cov    # with coverage
+npm run test:e2e    # e2e
 ```
-
-### Unit tests with coverage
-
-```bash
-npm run test:cov
-```
-
-### e2e tests
-
-```bash
-npm run test:e2e
-```
-
-## Environment Variables
-
-| Variable | Description | Example |
-|---|---|---|
-| `RABBITMQ_URL` | RabbitMQ connection URL | `amqp://guest:guest@rabbitmq:5672` |
-| `RABBITMQ_QUEUE_MESSAGES` | Main messages queue name | `messages_queue` |
-| `RABBITMQ_QUEUE_NOTIFICATIONS` | Notifications queue name | `notifications_queue` |
-| `TELEGRAM_BOT_TOKEN` | Token from @BotFather | `123456:ABC-DEF...` |
-| `TELEGRAM_CHAT_ID` | Target chat or user ID | `123456789` |
-
-## Message Flow
-
-1. Client sends `POST /messages/send` to the Producer
-2. Producer generates a UUID, attaches timestamp, publishes to `messages_queue`
-3. Consumer receives the message, checks idempotency, processes it
-4. Consumer forwards the message to `notifications_queue`
-5. Telegram Notifier receives from `notifications_queue` and sends a Telegram message
-6. On any failure, messages are routed to the Dead Letter Queue (`messages_dlx`)
