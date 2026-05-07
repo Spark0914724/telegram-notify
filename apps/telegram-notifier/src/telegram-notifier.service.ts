@@ -14,7 +14,20 @@ export class TelegramNotifierService implements OnModuleInit {
   onModuleInit() {
     const token = this.configService.getOrThrow<string>('TELEGRAM_BOT_TOKEN');
     this.chatId = this.configService.getOrThrow<string>('TELEGRAM_CHAT_ID');
-    this.bot = new TelegramBot(token);
+
+    const proxyUrl = this.configService.get<string>('TELEGRAM_PROXY_URL');
+
+    const options: TelegramBot.ConstructorOptions = {};
+
+    if (proxyUrl) {
+      options.request = {
+        url: '',
+        proxy: proxyUrl,
+      } as any;
+      this.logger.log(`Telegram bot using proxy: ${proxyUrl}`);
+    }
+
+    this.bot = new TelegramBot(token, options);
     this.logger.log('Telegram bot initialized');
   }
 

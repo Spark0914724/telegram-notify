@@ -1,9 +1,9 @@
 import { Logger } from '@nestjs/common';
 
 export interface RetryOptions {
-  retries?: number;       // max attempts (default: 3)
-  delay?: number;         // base delay in ms (default: 1000)
-  label?: string;         // context label for logs
+  retries?: number; // max attempts (default: 3)
+  delay?: number;   // base delay in ms (default: 1000)
+  label?: string;   // context label for logs
 }
 
 /**
@@ -19,15 +19,18 @@ export async function withRetry<T>(
 ): Promise<T> {
   const { retries = 3, delay = 1000, label = 'operation' } = options;
 
+  let lastError: Error;
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await operation();
     } catch (error) {
+      lastError = error as Error;
       const isLastAttempt = attempt === retries;
 
       if (logger) {
         logger.warn(
-          `[${label}] Attempt ${attempt}/${retries} failed: ${error.message}`,
+          `[${label}] Attempt ${attempt}/${retries} failed: ${lastError.message}`,
         );
       }
 
@@ -35,11 +38,13 @@ export async function withRetry<T>(
         if (logger) {
           logger.error(`[${label}] All ${retries} attempts failed. Giving up.`);
         }
-        throw error;
+        throw lastError;
       }
 
       // exponential backoff: delay * attempt (1s, 2s, 3s, ...)
       await new Promise((resolve) => setTimeout(resolve, delay * attempt));
     }
   }
+
+  throw lastError!;
 }

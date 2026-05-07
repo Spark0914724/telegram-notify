@@ -2,7 +2,6 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqp-connection-manager';
 import { ChannelWrapper } from 'amqp-connection-manager';
-import { ConfirmChannel } from 'amqplib';
 import { MessageDto } from '../dto/message.dto';
 import { withRetry } from '../utils/retry.util';
 
@@ -19,19 +18,7 @@ export class RmqPublisherService implements OnModuleInit, OnModuleDestroy {
 
     this.connection = amqp.connect([url]);
 
-    this.channelWrapper = this.connection.createChannel({
-      json: true,
-      setup: async (channel: ConfirmChannel) => {
-        await channel.assertQueue(
-          this.configService.getOrThrow<string>('RABBITMQ_QUEUE_MESSAGES'),
-          { durable: true },
-        );
-        await channel.assertQueue(
-          this.configService.getOrThrow<string>('RABBITMQ_QUEUE_NOTIFICATIONS'),
-          { durable: true },
-        );
-      },
-    });
+    this.channelWrapper = this.connection.createChannel({ json: true });
 
     this.logger.log('RabbitMQ publisher connection established');
   }
@@ -42,7 +29,10 @@ export class RmqPublisherService implements OnModuleInit, OnModuleDestroy {
   }
 
   async publish(queue: string, data: MessageDto): Promise<void> {
-    await this.channelWrapper.sendToQueue(queue, data, {
+    // NestJS @MessagePattern expects { pattern, data } format
+    const message = { pattern: queue, data };
+
+    await this.channelWrapper.sendToQueue(queue, message, {
       persistent: true,
       messageId: data.messageId,
       contentType: 'application/json',

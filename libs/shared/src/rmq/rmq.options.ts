@@ -7,12 +7,6 @@ export const getRmqOptions = (queue: string): RmqOptions => ({
     queue,
     queueOptions: {
       durable: true,
-      arguments: {
-        // When a message is nack'd without requeue, RabbitMQ
-        // forwards it to this exchange automatically
-        'x-dead-letter-exchange': 'messages_dlx',
-        'x-dead-letter-routing-key': 'messages_dead',
-      },
     },
     noAck: false,
   },
